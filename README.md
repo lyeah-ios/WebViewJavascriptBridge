@@ -8,7 +8,8 @@ An iOS/OSX bridge for sending messages between Obj-C and JavaScript in WKWebView
 Migration Guide
 ---------------
 
-When upgrading from v5.0.x to 6.0.x you will have to update the `setupWebViewJavascriptBridge` javascript snippet. See https://github.com/marcuswestin/WebViewJavascriptBridge#usage part 4).
+-- When upgrading from v5.0.x to 6.0.x you will have to update the `setupWebViewJavascriptBridge` javascript snippet. See https://github.com/marcuswestin/WebViewJavascriptBridge#usage part 4).
+-- When upgrading to 7.0.x you will have to remove UIWebViews in your projects.
 
 Who uses WebViewJavascriptBridge?
 ---------------------------------

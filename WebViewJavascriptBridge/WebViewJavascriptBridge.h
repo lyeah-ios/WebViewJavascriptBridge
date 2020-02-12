@@ -7,44 +7,31 @@
 //
 
 #import <Foundation/Foundation.h>
+#import <WebKit/WebKit.h>
 #import "WebViewJavascriptBridgeBase.h"
 
-#if (__MAC_OS_X_VERSION_MAX_ALLOWED > __MAC_10_9 || __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_7_1)
-#define supportsWKWebView
-#endif
+NS_ASSUME_NONNULL_BEGIN
 
-#if defined supportsWKWebView
-#import <WebKit/WebKit.h>
-#endif
+@protocol WebViewJavascriptBridge <NSObject>
 
-#if defined __MAC_OS_X_VERSION_MAX_ALLOWED
-    #define WVJB_PLATFORM_OSX
-    #define WVJB_WEBVIEW_TYPE WebView
-    #define WVJB_WEBVIEW_DELEGATE_TYPE NSObject<WebViewJavascriptBridgeBaseDelegate>
-    #define WVJB_WEBVIEW_DELEGATE_INTERFACE NSObject<WebViewJavascriptBridgeBaseDelegate, WebPolicyDelegate>
-#elif defined __IPHONE_OS_VERSION_MAX_ALLOWED
-    #import <UIKit/UIWebView.h>
-    #define WVJB_PLATFORM_IOS
-    #define WVJB_WEBVIEW_TYPE UIWebView
-    #define WVJB_WEBVIEW_DELEGATE_TYPE NSObject<UIWebViewDelegate>
-    #define WVJB_WEBVIEW_DELEGATE_INTERFACE NSObject<UIWebViewDelegate, WebViewJavascriptBridgeBaseDelegate>
-#endif
+- (void)registerHandler:(NSString *)handlerName handler:(WVJBHandler)handler;
+- (void)removeHandler:(NSString *)handlerName;
+- (void)callHandler:(NSString *)handlerName;
+- (void)callHandler:(NSString *)handlerName data:(nullable id)data;
+- (void)callHandler:(NSString *)handlerName data:(nullable id)data responseCallback:(nullable WVJBResponseCallback)responseCallback;
 
-@interface WebViewJavascriptBridge : WVJB_WEBVIEW_DELEGATE_INTERFACE
+@end
 
+@interface WebViewJavascriptBridge : NSObject<WKNavigationDelegate, WebViewJavascriptBridge, WebViewJavascriptBridgeBaseDelegate>
 
-+ (instancetype)bridgeForWebView:(id)webView;
-+ (instancetype)bridge:(id)webView;
++ (instancetype)bridgeForWebView:(WKWebView *)webView;
 
 + (void)enableLogging;
 + (void)setLogMaxLength:(int)length;
 
-- (void)registerHandler:(NSString*)handlerName handler:(WVJBHandler)handler;
-- (void)removeHandler:(NSString*)handlerName;
-- (void)callHandler:(NSString*)handlerName;
-- (void)callHandler:(NSString*)handlerName data:(id)data;
-- (void)callHandler:(NSString*)handlerName data:(id)data responseCallback:(WVJBResponseCallback)responseCallback;
 - (void)setWebViewDelegate:(id)webViewDelegate;
 - (void)disableJavscriptAlertBoxSafetyTimeout;
 
 @end
+
+NS_ASSUME_NONNULL_END

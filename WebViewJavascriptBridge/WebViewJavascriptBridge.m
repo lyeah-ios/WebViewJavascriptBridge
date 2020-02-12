@@ -8,211 +8,266 @@
 
 #import "WebViewJavascriptBridge.h"
 
-#if defined(supportsWKWebView)
-#import "WKWebViewJavascriptBridge.h"
-#endif
-
-#if __has_feature(objc_arc_weak)
-    #define WVJB_WEAK __weak
-#else
-    #define WVJB_WEAK __unsafe_unretained
-#endif
-
-@implementation WebViewJavascriptBridge {
-    WVJB_WEAK WVJB_WEBVIEW_TYPE* _webView;
-    WVJB_WEAK id _webViewDelegate;
-    long _uniqueId;
+@interface WebViewJavascriptBridge ()
+{
+    __weak WKWebView *_webView;
+    __weak id _webViewDelegate;
     WebViewJavascriptBridgeBase *_base;
 }
 
-/* API
- *****/
+@end
 
-+ (void)enableLogging {
+@implementation WebViewJavascriptBridge
+
+#pragma mark ---------- initialize ----------
+
++ (instancetype)bridgeForWebView:(WKWebView *)webView
+{
+    WebViewJavascriptBridge *bridge = [[WebViewJavascriptBridge alloc] init];
+    [bridge wvjb_setupInstance:webView];
+    [bridge wvjb_reset];
+    return bridge;
+}
+
+- (void)wvjb_setupInstance:(WKWebView *)webView
+{
+    _webView = webView;
+    _webView.navigationDelegate = self;
+    _base = [[WebViewJavascriptBridgeBase alloc] init];
+    _base.delegate = self;
+}
+
+#pragma mark ---------- Log ----------
+
++ (void)enableLogging
+{
     [WebViewJavascriptBridgeBase enableLogging];
 }
-+ (void)setLogMaxLength:(int)length {
+
++ (void)setLogMaxLength:(int)length
+{
     [WebViewJavascriptBridgeBase setLogMaxLength:length];
 }
 
-+ (instancetype)bridgeForWebView:(id)webView {
-    return [self bridge:webView];
-}
-+ (instancetype)bridge:(id)webView {
-#if defined supportsWKWebView
-    if ([webView isKindOfClass:[WKWebView class]]) {
-        return (WebViewJavascriptBridge*) [WKWebViewJavascriptBridge bridgeForWebView:webView];
-    }
-#endif
-// NOTE: The following allows the old support for WebView (macOS 10.3-10.14 - now
-// deprecated), but not support for UIWebView (iOS 2.0-12.0 - now deprecated).
-// We do NOT want to support UIWebView on iOS, as Apple is warning developers of
-// UIWebView API usage when submitting an app to the AppStore.  The thought is that
-// this will soon be an error with iOS uploads in our near future.
-#if defined WVJB_PLATFORM_OSX
-    if ([webView isKindOfClass:[WVJB_WEBVIEW_TYPE class]]) {
-        WebViewJavascriptBridge* bridge = [[self alloc] init];
-        [bridge _platformSpecificSetup:webView];
-        return bridge;
-    }
-#endif
-    [NSException raise:@"BadWebViewType" format:@"Unknown web view type."];
-    return nil;
-}
+#pragma mark ---------- WebViewJavascriptBridge ----------
 
-- (void)setWebViewDelegate:(WVJB_WEBVIEW_DELEGATE_TYPE*)webViewDelegate {
-    _webViewDelegate = webViewDelegate;
-}
-
-- (void)send:(id)data {
-    [self send:data responseCallback:nil];
-}
-
-- (void)send:(id)data responseCallback:(WVJBResponseCallback)responseCallback {
-    [_base sendData:data responseCallback:responseCallback handlerName:nil];
-}
-
-- (void)callHandler:(NSString *)handlerName {
+- (void)callHandler:(NSString *)handlerName
+{
     [self callHandler:handlerName data:nil responseCallback:nil];
 }
 
-- (void)callHandler:(NSString *)handlerName data:(id)data {
+- (void)callHandler:(NSString *)handlerName data:(id)data
+{
     [self callHandler:handlerName data:data responseCallback:nil];
 }
 
-- (void)callHandler:(NSString *)handlerName data:(id)data responseCallback:(WVJBResponseCallback)responseCallback {
+- (void)callHandler:(NSString *)handlerName data:(id)data responseCallback:(WVJBResponseCallback)responseCallback
+{
     [_base sendData:data responseCallback:responseCallback handlerName:handlerName];
 }
 
-- (void)registerHandler:(NSString *)handlerName handler:(WVJBHandler)handler {
+- (void)registerHandler:(NSString *)handlerName handler:(WVJBHandler)handler
+{
     _base.messageHandlers[handlerName] = [handler copy];
 }
 
-- (void)removeHandler:(NSString *)handlerName {
+- (void)removeHandler:(NSString *)handlerName
+{
     [_base.messageHandlers removeObjectForKey:handlerName];
 }
 
-- (void)disableJavscriptAlertBoxSafetyTimeout {
+#pragma mark ---------- API ----------
+
+- (void)wvjb_reset
+{
+    [_base reset];
+}
+
+- (void)setWebViewDelegate:(id)webViewDelegate
+{
+    _webViewDelegate = webViewDelegate;
+}
+
+- (void)disableJavscriptAlertBoxSafetyTimeout
+{
     [_base disableJavscriptAlertBoxSafetyTimeout];
 }
 
-
-/* Platform agnostic internals
- *****************************/
-
-- (void)dealloc {
-    [self _platformSpecificDealloc];
+- (void)dealloc
+{
     _base = nil;
     _webView = nil;
     _webViewDelegate = nil;
+    _webView.navigationDelegate = nil;
 }
 
-- (NSString*) _evaluateJavascript:(NSString*)javascriptCommand {
-    return [_webView stringByEvaluatingJavaScriptFromString:javascriptCommand];
+- (void)wvjb_flushMessageQueue
+{
+    NSString *webViewJavascriptFetchQueyCommand = [_base webViewJavascriptFetchQueyCommand];
+    [_webView evaluateJavaScript:webViewJavascriptFetchQueyCommand completionHandler:^(NSString * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            NSLog(@"WebViewJavascriptBridge: WARNING: Error when trying to fetch data from WKWebView: %@", error);
+        }
+        [self->_base flushMessageQueue:result];
+    }];
 }
 
-#if defined WVJB_PLATFORM_OSX
-/* Platform specific internals: OSX
- **********************************/
+#pragma mark ---------- WKNavigationDelegate ----------
 
-- (void) _platformSpecificSetup:(WVJB_WEBVIEW_TYPE*)webView {
-    _webView = webView;
-    _webView.policyDelegate = self;
-    _base = [[WebViewJavascriptBridgeBase alloc] init];
-    _base.delegate = self;
-}
-
-- (void) _platformSpecificDealloc {
-    _webView.policyDelegate = nil;
-}
-
-- (void)webView:(WebView *)webView decidePolicyForNavigationAction:(NSDictionary *)actionInformation request:(NSURLRequest *)request frame:(WebFrame *)frame decisionListener:(id<WebPolicyDecisionListener>)listener {
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
+{
     if (webView != _webView) { return; }
+    NSURL *url = navigationAction.request.URL;
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
     
-    NSURL *url = [request URL];
     if ([_base isWebViewJavascriptBridgeURL:url]) {
         if ([_base isBridgeLoadedURL:url]) {
             [_base injectJavascriptFile];
         } else if ([_base isQueueMessageURL:url]) {
-            NSString *messageQueueString = [self _evaluateJavascript:[_base webViewJavascriptFetchQueyCommand]];
-            [_base flushMessageQueue:messageQueueString];
+            [self wvjb_flushMessageQueue];
         } else {
             [_base logUnkownMessage:url];
         }
-        [listener ignore];
-    } else if (_webViewDelegate && [_webViewDelegate respondsToSelector:@selector(webView:decidePolicyForNavigationAction:request:frame:decisionListener:)]) {
-        [_webViewDelegate webView:webView decidePolicyForNavigationAction:actionInformation request:request frame:frame decisionListener:listener];
+        decisionHandler(WKNavigationActionPolicyCancel);
+        return;
+    }
+    
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:decidePolicyForNavigationAction:decisionHandler:)]) {
+        [_webViewDelegate webView:webView decidePolicyForNavigationAction:navigationAction decisionHandler:decisionHandler];
     } else {
-        [listener use];
+        decisionHandler(WKNavigationActionPolicyAllow);
     }
 }
 
-
-
-#elif defined WVJB_PLATFORM_IOS
-/* Platform specific internals: iOS
- **********************************/
-
-- (void) _platformSpecificSetup:(WVJB_WEBVIEW_TYPE*)webView {
-    _webView = webView;
-    _webView.delegate = self;
-    _base = [[WebViewJavascriptBridgeBase alloc] init];
-    _base.delegate = self;
-}
-
-- (void) _platformSpecificDealloc {
-    _webView.delegate = nil;
-}
-
-- (void)webViewDidFinishLoad:(UIWebView *)webView {
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction preferences:(WKWebpagePreferences *)preferences decisionHandler:(void (^)(WKNavigationActionPolicy, WKWebpagePreferences * _Nonnull))decisionHandler API_AVAILABLE(macos(10.15), ios(13.0))
+{
     if (webView != _webView) { return; }
+    NSURL *url = navigationAction.request.URL;
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
     
-    __strong WVJB_WEBVIEW_DELEGATE_TYPE* strongDelegate = _webViewDelegate;
-    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webViewDidFinishLoad:)]) {
-        [strongDelegate webViewDidFinishLoad:webView];
-    }
-}
-
-- (void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error {
-    if (webView != _webView) { return; }
-    
-    __strong WVJB_WEBVIEW_DELEGATE_TYPE* strongDelegate = _webViewDelegate;
-    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:didFailLoadWithError:)]) {
-        [strongDelegate webView:webView didFailLoadWithError:error];
-    }
-}
-
-- (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
-    if (webView != _webView) { return YES; }
-    
-    NSURL *url = [request URL];
-    __strong WVJB_WEBVIEW_DELEGATE_TYPE* strongDelegate = _webViewDelegate;
     if ([_base isWebViewJavascriptBridgeURL:url]) {
         if ([_base isBridgeLoadedURL:url]) {
             [_base injectJavascriptFile];
         } else if ([_base isQueueMessageURL:url]) {
-            NSString *messageQueueString = [self _evaluateJavascript:[_base webViewJavascriptFetchQueyCommand]];
-            [_base flushMessageQueue:messageQueueString];
+            [self wvjb_flushMessageQueue];
         } else {
             [_base logUnkownMessage:url];
         }
-        return NO;
-    } else if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:shouldStartLoadWithRequest:navigationType:)]) {
-        return [strongDelegate webView:webView shouldStartLoadWithRequest:request navigationType:navigationType];
+        decisionHandler(WKNavigationActionPolicyCancel, preferences);
+        return;
+    }
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:decidePolicyForNavigationAction:preferences:decisionHandler:)]) {
+        [_webViewDelegate webView:webView decidePolicyForNavigationAction:navigationAction preferences:preferences decisionHandler:decisionHandler];
     } else {
-        return YES;
+        if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:decidePolicyForNavigationAction:decisionHandler:)]) {
+            [_webViewDelegate webView:webView decidePolicyForNavigationAction:navigationAction decisionHandler:^(WKNavigationActionPolicy actionPolicy) {
+                decisionHandler(actionPolicy, preferences);
+            }];
+        } else {
+            decisionHandler(WKNavigationActionPolicyAllow, preferences);
+        }
     }
 }
 
-- (void)webViewDidStartLoad:(UIWebView *)webView {
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler
+{
     if (webView != _webView) { return; }
     
-    __strong WVJB_WEBVIEW_DELEGATE_TYPE* strongDelegate = _webViewDelegate;
-    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webViewDidStartLoad:)]) {
-        [strongDelegate webViewDidStartLoad:webView];
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:decidePolicyForNavigationResponse:decisionHandler:)]) {
+        [strongDelegate webView:webView decidePolicyForNavigationResponse:navigationResponse decisionHandler:decisionHandler];
+    } else {
+        decisionHandler(WKNavigationResponsePolicyAllow);
     }
 }
 
-#endif
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation
+{
+    if (webView != _webView) { return; }
+    
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:didStartProvisionalNavigation:)]) {
+        [strongDelegate webView:webView didStartProvisionalNavigation:navigation];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didReceiveServerRedirectForProvisionalNavigation:(WKNavigation *)navigation
+{
+    if (webView != _webView) { return; }
+    
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:didReceiveServerRedirectForProvisionalNavigation:)]) {
+        [strongDelegate webView:webView didReceiveServerRedirectForProvisionalNavigation:navigation];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error
+{
+    if (webView != _webView) { return; }
+    
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:didFailProvisionalNavigation:withError:)]) {
+        [strongDelegate webView:webView didFailProvisionalNavigation:navigation withError:error];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation
+{
+    if (webView != _webView) { return; }
+    
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:didCommitNavigation:)]) {
+        [strongDelegate webView:webView didCommitNavigation:navigation];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation
+{
+    if (webView != _webView) { return; }
+    
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:didFinishNavigation:)]) {
+        [strongDelegate webView:webView didFinishNavigation:navigation];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error
+{
+    if (webView != _webView) { return; }
+    
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:didFailNavigation:withError:)]) {
+        [strongDelegate webView:webView didFailNavigation:navigation withError:error];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential * _Nullable))completionHandler
+{
+    if (webView != _webView) { return; }
+    
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:didReceiveAuthenticationChallenge:completionHandler:)]) {
+        [strongDelegate webView:webView didReceiveAuthenticationChallenge:challenge completionHandler:completionHandler];
+    } else {
+        completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+    }
+}
+
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView API_AVAILABLE(macos(10.11), ios(9.0))
+{
+    if (webView != _webView) { return; }
+    
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webViewWebContentProcessDidTerminate:)]) {
+        [strongDelegate webViewWebContentProcessDidTerminate:webView];
+    }
+}
+
+#pragma mark ---------- WebViewJavascriptBridgeBaseDelegate ----------
+
+- (void)wvjb_evaluateJavascript:(NSString *)javascriptCommand completionHandler:(void (^)(id _Nullable, NSError * _Nullable))completionHandler
+{
+    [_webView evaluateJavaScript:javascriptCommand completionHandler:completionHandler];
+}
 
 @end
