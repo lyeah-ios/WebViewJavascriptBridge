@@ -146,7 +146,7 @@ static int logMaxLength = 500;
 - (BOOL)isSchemeMatch:(NSURL *)url
 {
     NSString *scheme = url.scheme.lowercaseString;
-    return [scheme isEqualToString:kWVJBProtocolScheme];
+    return [scheme isEqualToString:kNewProtocolScheme] || [scheme isEqualToString:kOldProtocolScheme];
 }
 
 - (BOOL)isQueueMessageURL:(NSURL *)url
