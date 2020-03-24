@@ -9,7 +9,7 @@ Migration Guide
 ---------------
 
 -- When upgrading from v5.0.x to 6.0.x you will have to update the `setupWebViewJavascriptBridge` javascript snippet. See https://github.com/marcuswestin/WebViewJavascriptBridge#usage part 4).
--- When upgrading to 7.0.x you will have to remove UIWebViews in your projects.
+-- When upgrading to 7.0.x you should support WKWebViews  only in your projects.
 
 Who uses WebViewJavascriptBridge?
 ---------------------------------
@@ -143,7 +143,7 @@ API Reference
 
 ### ObjC API
 
-##### `[WebViewJavascriptBridge bridgeForWebView:(WKWebVIew/UIWebView/WebView*)webview`
+##### `[WebViewJavascriptBridge bridgeForWebView:(WKWebVIew *)webview`
 
 Create a javascript bridge for the given web view.
 
@@ -179,13 +179,13 @@ Example:
 ```objc
 [self.bridge callHandler:@"showAlert" data:@"Hi from ObjC to JS!"];
 [self.bridge callHandler:@"getCurrentPageUrl" data:nil responseCallback:^(id responseData) {
-	NSLog(@"Current UIWebView page URL is: %@", responseData);
+	NSLog(@"Current WKWebView page URL is: %@", responseData);
 }];
 ```
 
 #### `[bridge setWebViewDelegate:(id)webViewDelegate]`
 
-Optionally, set a `WKNavigationDelegate/UIWebViewDelegate` if you need to respond to the [web view's lifecycle events](https://developer.apple.com/reference/uikit/uiwebviewdelegate).
+Optionally, set a `WKNavigationDelegate` if you need to respond to the [web view's lifecycle events](https://developer.apple.com/reference/Webkit/WKNavigationDelegate).
 
 ##### `[bridge disableJavscriptAlertBoxSafetyTimeout]`
 
