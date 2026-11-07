@@ -15,9 +15,15 @@ Version History
 
 v8.0.0 (target)
 + Minimum deployment targets: iOS 15.0 and macOS 12.0.
-+ Removed pre-iOS 13 navigation policy forwarding; the WKWebpagePreferences delegate API is now the only policy callback.
++ Removed navigation delegate interception and forwarding; applications set their own navigation delegate.
 + Guarded late JavaScript responses and hardened JavaScript bridge initialization.
-+ Kept the existing iframe bridge protocol to preserve webpage compatibility.
++ Added a preconfigured script-message transport that leaves the application's navigationDelegate untouched.
++ Add [WebViewJavascriptBridge userScript] to the application-owned configuration before constructing WKWebView, then create and retain a bridge with bridgeForWebView: before loading content.
++ Each user content controller requires a unique active bridge and an available WebViewJavascriptBridge handler name; WebKit may raise an exception for a conflict.
++ Compatibility target: existing main-frame H5 pages using the documented setup and JavaScript API should continue to work without page changes.
++ All-frame script injection does not provide frame-specific replies; native replies are evaluated in the main frame.
++ The first main-frame ready signal releases startup calls but does not guarantee that application JavaScript handlers are registered.
++ Known reload risk: in-flight calls and responses may be lost or reach the wrong document; each subsequent main-frame ready signal clears all native pending response callbacks without invoking them or reporting an error.
 
 v5.1.1
 + Swift unit tests and examples

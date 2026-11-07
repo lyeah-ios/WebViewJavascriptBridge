@@ -9,3 +9,7 @@
 *.xcuserstate
 *.xcworkspace/
 xcuserdata/
+
+.h*/
+.u*/
+/AGENTS.md

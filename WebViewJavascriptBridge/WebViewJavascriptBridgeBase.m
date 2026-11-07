@@ -7,7 +7,6 @@
 
 #import <Foundation/Foundation.h>
 #import "WebViewJavascriptBridgeBase.h"
-#import "WebViewJavascriptBridge_JS.h"
 
 static bool logging = false;
 static int logMaxLength = 500;
@@ -72,20 +71,70 @@ static int logMaxLength = 500;
     [self wvjb_queueMessage:message];
 }
 
-- (void)flushMessageQueue:(NSString *)messageQueueString
+- (void)handleMessage:(id)message
 {
-    if (messageQueueString == nil || messageQueueString.length == 0) {
-        NSLog(@"WebViewJavascriptBridge: WARNING: ObjC got nil while fetching the message queue JSON from webview. This can happen if the WebViewJavascriptBridge JS is not currently present in the webview, e.g if the webview just loaded a new page.");
+    [self handleMessage:message fromMainFrame:YES];
+}
+
+- (void)handleMessage:(id)message fromMainFrame:(BOOL)fromMainFrame
+{
+    if ([message isKindOfClass:[NSString class]]) {
+        message = [self wvjb_deserializeMessageJSON:message];
+    }
+    if (![message isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"WebViewJavascriptBridge: WARNING: Invalid message received: %@", message);
         return;
     }
-    
-    id messages = [self wvjb_deserializeMessageJSON:messageQueueString];
-    for (WVJBMessage *message in messages) {
-        if (![message isKindOfClass:[WVJBMessage class]]) {
-            NSLog(@"WebViewJavascriptBridge: WARNING: Invalid %@ received: %@", [message class], message);
-            continue;
+    NSDictionary *messageDictionary = (NSDictionary *)message;
+    id ready = message[@"__wvjbReady"];
+    if (ready) {
+        if (CFGetTypeID((__bridge CFTypeRef)ready) != CFBooleanGetTypeID()) {
+            NSLog(@"WebViewJavascriptBridge: WARNING: Invalid ready flag: %@", ready);
+            return;
         }
-        [self wvjb_log:@"RCVD" json:message];
+        if ([ready boolValue] && messageDictionary.count == 1) {
+            if (fromMainFrame) {
+                [self bridgeDidBecomeReady];
+            }
+            return;
+        }
+    }
+    for (NSString *key in @[@"responseId", @"callbackId", @"handlerName"]) {
+        id value = message[key];
+        if (value && ![value isKindOfClass:[NSString class]]) {
+            NSLog(@"WebViewJavascriptBridge: WARNING: Invalid message field %@: %@", key, value);
+            return;
+        }
+    }
+    if (!message[@"responseId"] && !message[@"handlerName"]) {
+        NSLog(@"WebViewJavascriptBridge: WARNING: Missing handler name: %@", message);
+        return;
+    }
+    [self wvjb_handleMessage:message];
+}
+
+- (void)bridgeDidBecomeReady
+{
+    // The first ready signal releases calls made before document-start ran.
+    // Later signals represent a reload; discard callbacks belonging to the old document.
+    if (!self.startupMessageQueue) {
+        self.startupMessageQueue = [NSMutableArray array];
+        self.responseCallbacks = [NSMutableDictionary dictionary];
+    }
+    NSArray *queue = self.startupMessageQueue;
+    self.startupMessageQueue = nil;
+    for (id queuedMessage in queue) {
+        [self wvjb_dispatchMessage:queuedMessage];
+    }
+}
+
+- (void)wvjb_handleMessage:(WVJBMessage *)message
+{
+    if (![message isKindOfClass:[WVJBMessage class]]) {
+        NSLog(@"WebViewJavascriptBridge: WARNING: Invalid %@ received: %@", [message class], message);
+        return;
+    }
+    [self wvjb_log:@"RCVD" json:message];
         
         NSString *responseId = message[@"responseId"];
         if (responseId) {
@@ -118,66 +167,11 @@ static int logMaxLength = 500;
             
             if (!handler) {
                 NSLog(@"WVJBNoHandlerException, No handler for message from JS: %@", message);
-                continue;
+                return;
             }
             
             handler(message[@"data"], responseCallback);
-        }
     }
-}
-
-- (void)injectJavascriptFile
-{
-    NSString *js = WebViewJavascriptBridge_js();
-    [self wvjb_evaluateJavascript:js];
-    if (self.startupMessageQueue) {
-        NSArray *queue = self.startupMessageQueue;
-        self.startupMessageQueue = nil;
-        for (id queuedMessage in queue) {
-            [self wvjb_dispatchMessage:queuedMessage];
-        }
-    }
-}
-
-- (BOOL)isWebViewJavascriptBridgeURL:(NSURL *)url
-{
-    if (![self isSchemeMatch:url]) {
-        return NO;
-    }
-    return [self isBridgeLoadedURL:url] || [self isQueueMessageURL:url];
-}
-
-- (BOOL)isSchemeMatch:(NSURL *)url
-{
-    NSString *scheme = url.scheme.lowercaseString;
-    return [scheme isEqualToString:kNewProtocolScheme] || [scheme isEqualToString:kOldProtocolScheme];
-}
-
-- (BOOL)isQueueMessageURL:(NSURL *)url
-{
-    NSString *host = url.host.lowercaseString;
-    return [self isSchemeMatch:url] && [host isEqualToString:kQueueHasMessage];
-}
-
-- (BOOL)isBridgeLoadedURL:(NSURL *)url
-{
-    NSString *host = url.host.lowercaseString;
-    return [self isSchemeMatch:url] && [host isEqualToString:kBridgeLoaded];
-}
-
-- (void)logUnkownMessage:(NSURL *)url
-{
-    NSLog(@"WebViewJavascriptBridge: WARNING: Received unknown WebViewJavascriptBridge command %@", [url absoluteString]);
-}
-
-- (NSString *)webViewJavascriptCheckCommand
-{
-    return @"typeof WebViewJavascriptBridge == \'object\';";
-}
-
-- (NSString *)webViewJavascriptFetchQueyCommand
-{
-    return @"WebViewJavascriptBridge._fetchQueue();";
 }
 
 - (void)disableJavscriptAlertBoxSafetyTimeout
@@ -196,7 +190,8 @@ static int logMaxLength = 500;
 
 - (void)wvjb_queueMessage:(WVJBMessage*)message
 {
-    if (self.startupMessageQueue) {
+    BOOL isResponse = message[@"responseId"] != nil;
+    if (self.startupMessageQueue && !isResponse) {
         [self.startupMessageQueue addObject:message];
     } else {
         [self wvjb_dispatchMessage:message];
@@ -233,7 +228,8 @@ static int logMaxLength = 500;
 
 - (NSArray *)wvjb_deserializeMessageJSON:(NSString *)messageJSON
 {
-    return [NSJSONSerialization JSONObjectWithData:[messageJSON dataUsingEncoding:NSUTF8StringEncoding] options:NSJSONReadingAllowFragments error:nil];
+    NSData *data = [messageJSON dataUsingEncoding:NSUTF8StringEncoding];
+    return data ? [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingAllowFragments error:nil] : nil;
 }
 
 - (void)wvjb_log:(NSString *)action json:(id)json

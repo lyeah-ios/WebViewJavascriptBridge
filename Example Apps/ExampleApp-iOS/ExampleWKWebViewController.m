@@ -11,7 +11,7 @@
 
 @interface ExampleWKWebViewController ()
 
-@property WebViewJavascriptBridge* bridge;
+@property (nonatomic, strong) WebViewJavascriptBridge* bridge;
 
 @end
 
@@ -20,12 +20,13 @@
 - (void)viewWillAppear:(BOOL)animated {
     if (_bridge) { return; }
     
-    WKWebView* webView = [[NSClassFromString(@"WKWebView") alloc] initWithFrame:self.view.bounds];
+    WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+    [configuration.userContentController addUserScript:[WebViewJavascriptBridge userScript]];
+    WKWebView* webView = [[WKWebView alloc] initWithFrame:self.view.bounds configuration:configuration];
+    _bridge = [WebViewJavascriptBridge bridgeForWebView:webView];
     webView.navigationDelegate = self;
     [self.view addSubview:webView];
     [WebViewJavascriptBridge enableLogging];
-    _bridge = [WebViewJavascriptBridge bridgeForWebView:webView];
-    [_bridge setWebViewDelegate:self];
     
     [_bridge registerHandler:@"testObjcCallback" handler:^(id data, WVJBResponseCallback responseCallback) {
         NSLog(@"testObjcCallback called: %@", data);

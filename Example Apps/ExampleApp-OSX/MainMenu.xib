@@ -664,14 +664,9 @@
         <customObject id="494" customClass="AppDelegate">
             <connections>
                 <outlet property="window" destination="371" id="532"/>
+                <outlet property="WKWebViewWrapper" destination="372" id="533"/>
             </connections>
         </customObject>
         <customObject id="420" customClass="NSFontManager"/>
-        <webView id="544">
-            <rect key="frame" x="0.0" y="0.0" width="254" height="200"/>
-            <autoresizingMask key="autoresizingMask"/>
-            <webPreferences key="preferences" defaultFontSize="12" defaultFixedFontSize="12"/>
-            <point key="canvasLocation" x="-118" y="-22"/>
-        </webView>
     </objects>
 </document>

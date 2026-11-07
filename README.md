@@ -13,6 +13,7 @@ Migration Guide
 -- When upgrading from v5.0.x to 6.0.x you will have to update the `setupWebViewJavascriptBridge` javascript snippet. See https://github.com/marcuswestin/WebViewJavascriptBridge#usage part 4).
 -- When upgrading to 7.0.x you should support WKWebViews  only in your projects.
 -- When upgrading to 8.0.0, plan for minimum deployment targets of iOS 15.0 and macOS 12.0.
+-- When upgrading to 8.0.0, add the bridge user script to the application-owned configuration before creating the web view, then create the bridge before loading content. Retain the bridge for as long as it is needed.
 
 Who uses WebViewJavascriptBridge?
 ---------------------------------
@@ -59,6 +60,30 @@ See the `Example Apps/` folder. Open either the iOS or OSX project and hit run t
 
 Run the tests with `make test`. To use an installed simulator other than the default, pass for example `DESTINATION='platform=iOS Simulator,name=iPhone 16,OS=latest'`.
 
+### Web view configuration
+
+Create the configuration and install the bridge script before creating the web view:
+
+Create the bridge and register handlers before loading any content:
+
+```objc
+WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+[configuration.userContentController addUserScript:[WebViewJavascriptBridge userScript]];
+WKWebView *webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
+self.bridge = [WebViewJavascriptBridge bridgeForWebView:webView];
+webView.navigationDelegate = self;
+```
+
+Keep a strong reference to the bridge. Install the script before creating the web view and create the bridge before the first page load. The script runs at document start. The application owns the configuration and manages `webView.navigationDelegate` directly. Each user content controller supports one active bridge and must not already use the `WebViewJavascriptBridge` message handler name. The application must prevent these conflicts; WebKit may raise an exception if the name is already registered, and the bridge does not catch it. Bridge creation returns nil and logs an error if the web view is nil or the matching script is missing.
+
+`userScript` defaults to main-frame-only injection. Use `userScriptForMainFrameOnly:NO` to inject the script into child frames as well. This does not provide reliable frame-specific communication: native replies are evaluated in the main frame, not directed to the originating child frame. Only main-frame ready signals update the native bridge state; ordinary child-frame messages are still handled. The registered WebKit message handler can also be accessed by child frames even without injecting the bridge script there. Do not load untrusted frame content without appropriate application-level validation and restrictions on native handlers.
+
+The first main-frame ready signal releases native calls queued during startup, but it does not guarantee that the page has registered its application handlers. Coordinate native calls with an application-level signal sent after those handlers are registered.
+
+The compatibility target is for existing main-frame H5 pages using the documented bridge setup and JavaScript API to work without changing their page code. This is a compatibility goal, not a guarantee for every legacy page.
+
+`setWebViewDelegate:` is no longer available; set `webView.navigationDelegate` directly. During navigation or reload, calls and responses can be lost or reach the wrong document. Each subsequent main-frame ready signal clears all native pending response callbacks without invoking them or reporting an error. Avoid relying on in-flight calls across reloads and coordinate application work with application-level readiness.
+
 To use a WebViewJavascriptBridge in your own project:
 
 Usage
@@ -73,14 +98,10 @@ Usage
 ...
 
 ```objc
-@property WebViewJavascriptBridge* bridge;
+@property (nonatomic, strong) WebViewJavascriptBridge *bridge;
 ```
 
-2) Instantiate WebViewJavascriptBridge with a WKWebView (iOS or macOS):
-
-```objc
-self.bridge = [WebViewJavascriptBridge bridgeForWebView:webView];
-```
+2) Install the user script, create the WKWebView, and create the bridge before loading content, as shown in Web view configuration above (iOS or macOS).
 
 3) Register a handler in ObjC, and call a JS handler:
 
@@ -150,15 +171,19 @@ API Reference
 
 ### ObjC API
 
-##### `[WebViewJavascriptBridge bridgeForWebView:(WKWebVIew *)webview`
+##### `[WebViewJavascriptBridge userScript]`
 
-Create a javascript bridge for the given web view.
+Obtain the bridge user script and add it to the application's configuration before creating the web view.
 
 Example:
 
 ```objc	
-[WebViewJavascriptBridge bridgeForWebView:webView];
+[configuration.userContentController addUserScript:[WebViewJavascriptBridge userScript]];
 ```
+
+##### `[WebViewJavascriptBridge bridgeForWebView:(WKWebView *)webView]`
+
+Create and retain a bridge for the web view before loading any content, after adding `[WebViewJavascriptBridge userScript]` to the configuration and creating the web view. Bridge creation returns nil if the web view or matching script is missing.
 
 ##### `[bridge registerHandler:(NSString*)handlerName handler:(WVJBHandler)handler]`
 
@@ -189,10 +214,6 @@ Example:
 	NSLog(@"Current WKWebView page URL is: %@", responseData);
 }];
 ```
-
-#### `[bridge setWebViewDelegate:(id)webViewDelegate]`
-
-Optionally, set a `WKNavigationDelegate` if you need to respond to the [web view's lifecycle events](https://developer.apple.com/reference/Webkit/WKNavigationDelegate).
 
 ##### `[bridge disableJavscriptAlertBoxSafetyTimeout]`
 
