@@ -114,32 +114,7 @@
 
 #pragma mark ---------- WKNavigationDelegate ----------
 
-- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
-{
-    if (webView != _webView) { return; }
-    NSURL *url = navigationAction.request.URL;
-    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
-    
-    if ([_base isWebViewJavascriptBridgeURL:url]) {
-        if ([_base isBridgeLoadedURL:url]) {
-            [_base injectJavascriptFile];
-        } else if ([_base isQueueMessageURL:url]) {
-            [self wvjb_flushMessageQueue];
-        } else {
-            [_base logUnkownMessage:url];
-        }
-        decisionHandler(WKNavigationActionPolicyCancel);
-        return;
-    }
-    
-    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:decidePolicyForNavigationAction:decisionHandler:)]) {
-        [_webViewDelegate webView:webView decidePolicyForNavigationAction:navigationAction decisionHandler:decisionHandler];
-    } else {
-        decisionHandler(WKNavigationActionPolicyAllow);
-    }
-}
-
-- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction preferences:(WKWebpagePreferences *)preferences decisionHandler:(void (^)(WKNavigationActionPolicy, WKWebpagePreferences * _Nonnull))decisionHandler API_AVAILABLE(macos(10.15), ios(13.0))
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction preferences:(WKWebpagePreferences *)preferences decisionHandler:(void (^)(WKNavigationActionPolicy, WKWebpagePreferences * _Nonnull))decisionHandler
 {
     if (webView != _webView) { return; }
     NSURL *url = navigationAction.request.URL;
@@ -157,15 +132,9 @@
         return;
     }
     if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:decidePolicyForNavigationAction:preferences:decisionHandler:)]) {
-        [_webViewDelegate webView:webView decidePolicyForNavigationAction:navigationAction preferences:preferences decisionHandler:decisionHandler];
+        [strongDelegate webView:webView decidePolicyForNavigationAction:navigationAction preferences:preferences decisionHandler:decisionHandler];
     } else {
-        if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:decidePolicyForNavigationAction:decisionHandler:)]) {
-            [_webViewDelegate webView:webView decidePolicyForNavigationAction:navigationAction decisionHandler:^(WKNavigationActionPolicy actionPolicy) {
-                decisionHandler(actionPolicy, preferences);
-            }];
-        } else {
-            decisionHandler(WKNavigationActionPolicyAllow, preferences);
-        }
+        decisionHandler(WKNavigationActionPolicyAllow, preferences);
     }
 }
 
@@ -253,7 +222,7 @@
     }
 }
 
-- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView API_AVAILABLE(macos(10.11), ios(9.0))
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView
 {
     if (webView != _webView) { return; }
     

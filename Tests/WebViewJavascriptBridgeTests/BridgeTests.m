@@ -17,6 +17,7 @@ static NSString *const echoHandler = @"echoHandler";
 @end
 @interface TestWebPageLoadDelegate : NSObject<WKNavigationDelegate>
 @property XCTestExpectation* expectation;
+@property XCTestExpectation* policyExpectation;
 @end
 
 @implementation BridgeTests {
@@ -108,6 +109,7 @@ const NSTimeInterval timeoutSec = 5;
     echoObject(@"A string with '\"'/\\");
     echoObject(@[ @1, @2, @3 ]);
     echoObject(@{ @"a" : @1, @"b" : @2 });
+    echoObject(@{ @"nested" : @[ @YES, [NSNull null], @"line\n\u2028\u2029" ] });
     
     loadEchoSample(webView);
 }
@@ -155,14 +157,54 @@ const NSTimeInterval timeoutSec = 5;
     WebViewJavascriptBridge* bridge = [self bridgeForWebView:webView];
     TestWebPageLoadDelegate* delegate = [TestWebPageLoadDelegate new];
     delegate.expectation = [self expectationWithDescription:@"Webpage loaded"];
+    delegate.policyExpectation = [self expectationWithDescription:@"Navigation policy forwarded"];
     [_retains addObject:delegate];
     [bridge setWebViewDelegate:delegate];
-    NSURLRequest *request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"https://example.com"]];
-    [(WKWebView*)webView loadRequest:request];
+    loadEchoSample(webView);
+}
+
+- (void)testBridgeURLCompatibility {
+    WebViewJavascriptBridgeBase *base = [WebViewJavascriptBridgeBase new];
+    for (NSString *scheme in @[ @"https", @"wvjbscheme" ]) {
+        NSURL *loaded = [NSURL URLWithString:[NSString stringWithFormat:@"%@://__bridge_loaded__", scheme]];
+        NSURL *queue = [NSURL URLWithString:[NSString stringWithFormat:@"%@://__wvjb_queue_message__", scheme]];
+        XCTAssertTrue([base isWebViewJavascriptBridgeURL:loaded]);
+        XCTAssertTrue([base isBridgeLoadedURL:loaded]);
+        XCTAssertTrue([base isWebViewJavascriptBridgeURL:queue]);
+        XCTAssertTrue([base isQueueMessageURL:queue]);
+    }
+    XCTAssertFalse([base isWebViewJavascriptBridgeURL:[NSURL URLWithString:@"https://example.com"]]);
+    XCTAssertFalse([base isWebViewJavascriptBridgeURL:[NSURL URLWithString:@"http://__bridge_loaded__"]]);
+    XCTAssertFalse([base isWebViewJavascriptBridgeURL:[NSURL URLWithString:@"wvjbscheme://unknown"]]);
+}
+
+- (void)testResponseCallbackIsRemovedAfterDelivery {
+    WebViewJavascriptBridgeBase *base = [WebViewJavascriptBridgeBase new];
+    __block id received = nil;
+    [base sendData:nil responseCallback:^(id data) { received = data; } handlerName:@"test"];
+    NSString *callbackID = [base.responseCallbacks.allKeys firstObject];
+    XCTAssertNotNil(callbackID);
+    NSData *json = [NSJSONSerialization dataWithJSONObject:@[ @{ @"responseId": callbackID, @"responseData": @"ok" } ] options:0 error:nil];
+    [base flushMessageQueue:[[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]];
+    XCTAssertEqualObjects(received, @"ok");
+    XCTAssertEqual(base.responseCallbacks.count, 0u);
+}
+
+- (void)testUnknownResponseDoesNotCrash {
+    WebViewJavascriptBridgeBase *base = [WebViewJavascriptBridgeBase new];
+    NSData *json = [NSJSONSerialization dataWithJSONObject:@[ @{ @"responseId": @"missing", @"responseData": @"ignored" } ] options:0 error:nil];
+    XCTAssertNoThrow([base flushMessageQueue:[[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]]);
 }
 @end
 
 @implementation TestWebPageLoadDelegate
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction preferences:(WKWebpagePreferences *)preferences decisionHandler:(void (^)(WKNavigationActionPolicy, WKWebpagePreferences *))decisionHandler {
+    if (navigationAction.targetFrame.isMainFrame && navigationAction.request.URL.isFileURL) {
+        [self.policyExpectation fulfill];
+    }
+    decisionHandler(WKNavigationActionPolicyAllow, preferences);
+}
+
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     [self.expectation fulfill];
 }

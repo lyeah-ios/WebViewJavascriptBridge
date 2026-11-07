@@ -10,7 +10,7 @@
 
 #import "WebViewJavascriptBridge_JS.h"
 
-NSString * WebViewJavascriptBridge_js() {
+NSString *WebViewJavascriptBridge_js(void) {
 	#define __wvjb_js_func__(x) #x
 	
 	// BEGIN preprocessorJSCode
@@ -125,7 +125,7 @@ NSString * WebViewJavascriptBridge_js() {
 	
 	setTimeout(_callWVJBCallbacks, 0);
 	function _callWVJBCallbacks() {
-		var callbacks = window.WVJBCallbacks;
+		var callbacks = window.WVJBCallbacks || [];
 		delete window.WVJBCallbacks;
 		for (var i=0; i<callbacks.length; i++) {
 			callbacks[i](WebViewJavascriptBridge);

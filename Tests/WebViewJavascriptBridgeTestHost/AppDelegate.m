@@ -8,14 +8,25 @@
 
 #import "AppDelegate.h"
 
+@interface TestSceneDelegate : UIResponder <UIWindowSceneDelegate>
+@property (strong, nonatomic) UIWindow *window;
+@end
+
+@implementation TestSceneDelegate
+- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions {
+  self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
+  self.window.rootViewController = [UIViewController new];
+  ((AppDelegate *)[UIApplication sharedApplication].delegate).window = self.window;
+  [self.window makeKeyAndVisible];
+}
+@end
+
 @implementation AppDelegate
 
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-  self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-  self.window.rootViewController = [UIViewController new];
-  [self.window makeKeyAndVisible];
-
-  return YES;
+- (UISceneConfiguration *)application:(UIApplication *)application configurationForConnectingSceneSession:(UISceneSession *)connectingSceneSession options:(UISceneConnectionOptions *)options {
+  UISceneConfiguration *configuration = [[UISceneConfiguration alloc] initWithName:nil sessionRole:connectingSceneSession.role];
+  configuration.delegateClass = [TestSceneDelegate class];
+  return configuration;
 }
 
 - (void)applicationWillResignActive:(UIApplication *)application {

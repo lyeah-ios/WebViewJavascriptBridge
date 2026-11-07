@@ -1,0 +1,14 @@
+version: 2.1
+
+jobs:
+  test:
+    macos:
+      xcode: 16.4.0
+    steps:
+      - checkout
+      - run: make test DESTINATION='platform=iOS Simulator,name=iPhone 16,OS=latest'
+
+workflows:
+  test:
+    jobs:
+      - test

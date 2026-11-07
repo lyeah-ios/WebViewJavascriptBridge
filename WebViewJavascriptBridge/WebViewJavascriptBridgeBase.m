@@ -22,7 +22,7 @@ static int logMaxLength = 500;
 @implementation WebViewJavascriptBridgeBase
 
 + (void)enableLogging { logging = true; }
-+ (void)setLogMaxLength:(int)length { logMaxLength = length;}
++ (void)setLogMaxLength:(int)length { logMaxLength = MAX(0, length); }
 
 - (instancetype)init
 {
@@ -90,7 +90,11 @@ static int logMaxLength = 500;
         NSString *responseId = message[@"responseId"];
         if (responseId) {
             WVJBResponseCallback responseCallback = _responseCallbacks[responseId];
-            responseCallback(message[@"responseData"]);
+            if (responseCallback) {
+                responseCallback(message[@"responseData"]);
+            } else {
+                NSLog(@"WebViewJavascriptBridge: WARNING: Received response for unknown callback %@", responseId);
+            }
             [self.responseCallbacks removeObjectForKey:responseId];
         } else {
             WVJBResponseCallback responseCallback = NULL;
