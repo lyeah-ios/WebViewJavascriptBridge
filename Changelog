@@ -13,7 +13,7 @@ Release Checklist
 Version History
 ---------------
 
-v8.0.0 (target)
+v7.1.0
 + Minimum deployment targets: iOS 15.0 and macOS 12.0.
 + Removed pre-iOS 13 navigation policy forwarding; the WKWebpagePreferences delegate API is now the only policy callback.
 + Guarded late JavaScript responses and hardened JavaScript bridge initialization.

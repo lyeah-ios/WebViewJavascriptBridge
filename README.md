@@ -5,14 +5,14 @@ WebViewJavascriptBridge
 
 An iOS/macOS bridge for sending messages between Obj-C and JavaScript in WKWebViews.
 
-Version 8.0.0 targets iOS 15.0 and macOS 12.0 or later.
+Version 7.1.0 targets iOS 15.0 and macOS 12.0 or later.
 
 Migration Guide
 ---------------
 
 -- When upgrading from v5.0.x to 6.0.x you will have to update the `setupWebViewJavascriptBridge` javascript snippet. See https://github.com/marcuswestin/WebViewJavascriptBridge#usage part 4).
 -- When upgrading to 7.0.x you should support WKWebViews  only in your projects.
--- When upgrading to 8.0.0, plan for minimum deployment targets of iOS 15.0 and macOS 12.0.
+-- When upgrading to 7.1.0, plan for minimum deployment targets of iOS 15.0 and macOS 12.0.
 
 Who uses WebViewJavascriptBridge?
 ---------------------------------
@@ -41,10 +41,8 @@ Installation (iOS & OSX)
 Add this to your [podfile](https://guides.cocoapods.org/using/getting-started.html) and run `pod install` to install:
 
 ```ruby
-pod 'WebViewJavascriptBridge', '~> 8.0'
+pod 'WebViewJavascriptBridge', '~> 7.1'
 ```
-
-The 8.0.0 pod version must be published before this dependency can be installed.
 
 ### Manual installation
 
