@@ -29,16 +29,11 @@ NSString *WebViewJavascriptBridge_js(void) {
 		registerHandler: registerHandler,
 		callHandler: callHandler,
 		disableJavscriptAlertBoxSafetyTimeout: disableJavscriptAlertBoxSafetyTimeout,
-		_fetchQueue: _fetchQueue,
+		_fetchQueue: function() { return '[]'; },
 		_handleMessageFromObjC: _handleMessageFromObjC
 	};
 
-	var messagingIframe;
-	var sendMessageQueue = [];
 	var messageHandlers = {};
-	
-	var CUSTOM_PROTOCOL_SCHEME = 'https';
-	var QUEUE_HAS_MESSAGE = '__wvjb_queue_message__';
 	
 	var responseCallbacks = {};
 	var uniqueId = 1;
@@ -65,14 +60,7 @@ NSString *WebViewJavascriptBridge_js(void) {
 			responseCallbacks[callbackId] = responseCallback;
 			message['callbackId'] = callbackId;
 		}
-		sendMessageQueue.push(message);
-		messagingIframe.src = CUSTOM_PROTOCOL_SCHEME + '://' + QUEUE_HAS_MESSAGE;
-	}
-
-	function _fetchQueue() {
-		var messageQueueString = JSON.stringify(sendMessageQueue);
-		sendMessageQueue = [];
-		return messageQueueString;
+		window.webkit.messageHandlers.WebViewJavascriptBridge.postMessage(message);
 	}
 
 	function _dispatchMessageFromObjC(messageJSON) {
@@ -116,12 +104,14 @@ NSString *WebViewJavascriptBridge_js(void) {
         _dispatchMessageFromObjC(messageJSON);
 	}
 
-	messagingIframe = document.createElement('iframe');
-	messagingIframe.style.display = 'none';
-	messagingIframe.src = CUSTOM_PROTOCOL_SCHEME + '://' + QUEUE_HAS_MESSAGE;
-	document.documentElement.appendChild(messagingIframe);
-
 	registerHandler("_disableJavascriptAlertBoxSafetyTimeout", disableJavscriptAlertBoxSafetyTimeout);
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', function() {
+			window.webkit.messageHandlers.WebViewJavascriptBridge.postMessage({ __wvjbReady: true });
+		}, { once: true });
+	} else {
+		window.webkit.messageHandlers.WebViewJavascriptBridge.postMessage({ __wvjbReady: true });
+	}
 	
 	setTimeout(_callWVJBCallbacks, 0);
 	function _callWVJBCallbacks() {

@@ -13,19 +13,22 @@
 @implementation AppDelegate {
     WKWebView *_WKWebView;
     WebViewJavascriptBridge* _WKBridge;
-    NSView* _WKWebViewWrapper;
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification
 {
-    [self _createViews];
     [self _configureWKWebview];
 }
 
 - (void)_configureWKWebview {
-    // Create Bridge
+    WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+    [configuration.userContentController addUserScript:[WebViewJavascriptBridge userScript]];
+    _WKWebView = [[WKWebView alloc] initWithFrame:self.WKWebViewWrapper.bounds configuration:configuration];
     _WKBridge = [WebViewJavascriptBridge bridgeForWebView:_WKWebView];
-    
+    _WKWebView.navigationDelegate = self;
+    [_WKWebView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable)];
+    [self.WKWebViewWrapper addSubview:_WKWebView];
+
     [_WKBridge registerHandler:@"testObjcCallback" handler:^(id data, WVJBResponseCallback responseCallback) {
         NSLog(@"testObjcCallback called: %@", data);
         responseCallback(@"Response from testObjcCallback");
@@ -65,16 +68,5 @@
         NSLog(@"testJavascriptHandler responded: %@", response);
     }];
 }
-
-- (void)_createViews {
-    NSView* contentView = _window.contentView;
-    
-    // WKWebView
-    _WKWebView = [[WKWebView alloc] initWithFrame:contentView.frame];
-    [_WKWebView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable)];
-    
-    [contentView addSubview:_WKWebView];
-}
-
 
 @end
