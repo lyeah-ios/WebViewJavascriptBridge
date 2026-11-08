@@ -14,14 +14,20 @@ Version History
 ---------------
 
 v8.0.0
++ Unified bridge logging; errors and authorization rejections remain visible by default without message payloads, while message logging remains opt-in.
++ Use userScriptForMainFrameOnly: to select the injection scope explicitly.
++ Breaking native API change: handlers receive only WVJBMessageContext, containing data, WebKit frameInfo and an optional responseCallback.
++ Requests default to main-frame only; an authorization handler can authorize individual requests from either frame scope.
++ Replies to JavaScript requests target the originating frame. Subframe responses to native calls are rejected.
++ Frame identity does not guarantee document identity across navigation; in-flight calls can still be lost or misdirected.
+
 + Minimum deployment targets: iOS 15.0 and macOS 12.0.
 + Removed navigation delegate interception and forwarding; applications set their own navigation delegate.
 + Guarded late JavaScript responses and hardened JavaScript bridge initialization.
 + Added a preconfigured script-message transport that leaves the application's navigationDelegate untouched.
-+ Add [WebViewJavascriptBridge userScript] to the application-owned configuration before constructing WKWebView, then create and retain a bridge with bridgeForWebView: before loading content.
++ Add [WebViewJavascriptBridge userScriptForMainFrameOnly:YES] to the application-owned configuration before constructing WKWebView, then create and retain a bridge with bridgeForWebView: before loading content.
 + Each user content controller requires a unique active bridge and an available WebViewJavascriptBridge handler name; WebKit may raise an exception for a conflict.
 + Compatibility target: existing main-frame H5 pages using the documented setup and JavaScript API should continue to work without page changes.
-+ All-frame script injection does not provide frame-specific replies; native replies are evaluated in the main frame.
 + The first main-frame ready signal releases startup calls but does not guarantee that application JavaScript handlers are registered.
 + Known reload risk: in-flight calls and responses may be lost or reach the wrong document; each subsequent main-frame ready signal clears all native pending response callbacks without invoking them or reporting an error.
 

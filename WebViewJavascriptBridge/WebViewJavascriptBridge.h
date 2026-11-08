@@ -28,12 +28,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface WebViewJavascriptBridge : NSObject<WebViewJavascriptBridge, WebViewJavascriptBridgeBaseDelegate>
 
-/// Return the document-start, main-frame-only script. The business must add it to the
-/// configuration's userContentController before creating the WKWebView.
-+ (WKUserScript *)userScript;
+/// When nil, main-frame requests are allowed and subframe requests are rejected.
+/// When set, every request requires explicit authorization. Configure before loading content.
+@property (nullable, nonatomic, copy) WVJBAuthorizationHandler authorizationHandler;
 
-/// Return the document-start script with the requested frame scope. All-frame injection
-/// does not provide frame-specific replies; native replies are evaluated in the main frame.
+/// Return the document-start script with the requested frame scope. Script injection does
+/// not authorize requests; subframe requests require an authorization handler.
 + (WKUserScript *)userScriptForMainFrameOnly:(BOOL)mainFrameOnly;
 
 /// Bridge state is not synchronized for concurrent access.

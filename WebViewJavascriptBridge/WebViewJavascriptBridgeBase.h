@@ -6,15 +6,26 @@
 //
 
 #import <Foundation/Foundation.h>
+#import <WebKit/WebKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
 typedef void (^WVJBResponseCallback)(id responseData);
-typedef void (^WVJBHandler)(id data, WVJBResponseCallback responseCallback);
+@interface WVJBMessageContext : NSObject
+@property (nullable, nonatomic, strong, readonly) id data;
+@property (nonatomic, strong, readonly) WKFrameInfo *frameInfo;
+/// Nil when the JavaScript call did not include a response callback.
+@property (nullable, nonatomic, copy, readonly) WVJBResponseCallback responseCallback;
+- (instancetype)init NS_UNAVAILABLE;
+@end
+
+typedef void (^WVJBHandler)(WVJBMessageContext *context);
+typedef BOOL (^WVJBAuthorizationHandler)(WVJBMessageContext *context, NSString *handlerName);
 typedef NSDictionary WVJBMessage;
 
 @protocol WebViewJavascriptBridgeBaseDelegate <NSObject>
-- (void)wvjb_evaluateJavascript:(NSString *)javascriptCommand completionHandler:(void (^ _Nullable)(_Nullable id, NSError * _Nullable error))completionHandler;
+- (void)wvjb_evaluateJavascript:(NSString *)javascriptCommand inFrame:(nullable WKFrameInfo *)frame completionHandler:(void (^ _Nullable)(_Nullable id, NSError * _Nullable error))completionHandler;
+- (BOOL)wvjb_authorizeContext:(WVJBMessageContext *)context handlerName:(NSString *)handlerName;
 @end
 
 @interface WebViewJavascriptBridgeBase : NSObject
@@ -28,8 +39,7 @@ typedef NSDictionary WVJBMessage;
 + (void)setLogMaxLength:(int)length;
 - (void)reset;
 - (void)sendData:(nullable id)data responseCallback:(nullable WVJBResponseCallback)responseCallback handlerName:(NSString *)handlerName;
-- (void)handleMessage:(id)message;
-- (void)handleMessage:(id)message fromMainFrame:(BOOL)fromMainFrame;
+- (void)handleMessage:(id)message frameInfo:(WKFrameInfo *)frameInfo;
 - (void)bridgeDidBecomeReady;
 - (void)disableJavscriptAlertBoxSafetyTimeout;
 

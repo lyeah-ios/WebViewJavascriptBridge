@@ -21,16 +21,16 @@
     if (_bridge) { return; }
     
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
-    [configuration.userContentController addUserScript:[WebViewJavascriptBridge userScript]];
+    [configuration.userContentController addUserScript:[WebViewJavascriptBridge userScriptForMainFrameOnly:YES]];
     WKWebView* webView = [[WKWebView alloc] initWithFrame:self.view.bounds configuration:configuration];
     _bridge = [WebViewJavascriptBridge bridgeForWebView:webView];
     webView.navigationDelegate = self;
     [self.view addSubview:webView];
     [WebViewJavascriptBridge enableLogging];
     
-    [_bridge registerHandler:@"testObjcCallback" handler:^(id data, WVJBResponseCallback responseCallback) {
-        NSLog(@"testObjcCallback called: %@", data);
-        responseCallback(@"Response from testObjcCallback");
+    [_bridge registerHandler:@"testObjcCallback" handler:^(WVJBMessageContext *context) {
+        NSLog(@"testObjcCallback called: %@", context.data);
+        if (context.responseCallback) context.responseCallback(@"Response from testObjcCallback");
     }];
     
     [_bridge callHandler:@"testJavascriptHandler" data:@{ @"foo":@"before ready" }];

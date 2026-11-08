@@ -11,6 +11,10 @@
 
 static NSString * const kWVJBScriptMessageHandlerName = @"WebViewJavascriptBridge";
 
+@interface WebViewJavascriptBridgeBase (WVJBLogging)
++ (void)wvjb_log:(NSString *)action message:(id)message debug:(BOOL)debug;
+@end
+
 @class WebViewJavascriptBridge;
 
 @interface WVJBScriptMessageRouter : NSObject <WKScriptMessageHandler>
@@ -39,11 +43,6 @@ static NSString * const kWVJBScriptMessageHandlerName = @"WebViewJavascriptBridg
 
 #pragma mark ---------- initialize ----------
 
-+ (WKUserScript *)userScript
-{
-    return [self userScriptForMainFrameOnly:YES];
-}
-
 + (WKUserScript *)userScriptForMainFrameOnly:(BOOL)mainFrameOnly
 {
     return [[WKUserScript alloc] initWithSource:WebViewJavascriptBridge_js()
@@ -54,7 +53,7 @@ static NSString * const kWVJBScriptMessageHandlerName = @"WebViewJavascriptBridg
 + (instancetype)bridgeForWebView:(WKWebView *)webView
 {
     if (!webView) {
-        NSLog(@"WebViewJavascriptBridge: webView must not be nil");
+        [WebViewJavascriptBridgeBase wvjb_log:@"ERROR" message:@"Web view must not be nil" debug:NO];
         return nil;
     }
 
@@ -69,7 +68,7 @@ static NSString * const kWVJBScriptMessageHandlerName = @"WebViewJavascriptBridg
         }
     }
     if (!hasMatchingScript) {
-        NSLog(@"WebViewJavascriptBridge: matching userScript was not injected; add +[WebViewJavascriptBridge userScript] or +[WebViewJavascriptBridge userScriptForMainFrameOnly:] before creating the WKWebView");
+        [WebViewJavascriptBridgeBase wvjb_log:@"ERROR" message:@"Matching user script is missing; add userScriptForMainFrameOnly: before creating the web view" debug:NO];
         return nil;
     }
 
@@ -137,15 +136,30 @@ static NSString * const kWVJBScriptMessageHandlerName = @"WebViewJavascriptBridg
 
 #pragma mark ---------- WebViewJavascriptBridgeBaseDelegate ----------
 
-- (void)wvjb_evaluateJavascript:(NSString *)javascriptCommand completionHandler:(void (^)(id _Nullable, NSError * _Nullable))completionHandler
+- (void)wvjb_evaluateJavascript:(NSString *)javascriptCommand inFrame:(WKFrameInfo *)frame completionHandler:(void (^)(id _Nullable, NSError * _Nullable))completionHandler
 {
-    [_webView evaluateJavaScript:javascriptCommand completionHandler:completionHandler];
+    WKWebView *webView = _webView;
+    if (!webView) {
+        if (completionHandler) {
+            completionHandler(nil, [NSError errorWithDomain:@"WebViewJavascriptBridge" code:1 userInfo:@{NSLocalizedDescriptionKey: @"Web view is no longer available"}]);
+        }
+    } else if (frame) {
+        [webView evaluateJavaScript:javascriptCommand inFrame:frame inContentWorld:WKContentWorld.pageWorld completionHandler:completionHandler];
+    } else {
+        [webView evaluateJavaScript:javascriptCommand completionHandler:completionHandler];
+    }
+}
+
+- (BOOL)wvjb_authorizeContext:(WVJBMessageContext *)context handlerName:(NSString *)handlerName
+{
+    WVJBAuthorizationHandler authorization = self.authorizationHandler;
+    return authorization ? authorization(context, handlerName) : context.frameInfo.isMainFrame;
 }
 
 - (void)wvjb_receiveMessage:(WKScriptMessage *)message
 {
     if (message.webView == _webView && _webView) {
-        [_base handleMessage:message.body fromMainFrame:message.frameInfo.isMainFrame];
+        [_base handleMessage:message.body frameInfo:message.frameInfo];
     }
 }
 

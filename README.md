@@ -14,6 +14,8 @@ Migration Guide
 -- When upgrading to 7.0.x you should support WKWebViews  only in your projects.
 -- When upgrading to 7.1.0, plan for minimum deployment targets of iOS 15.0 and macOS 12.0.
 -- When upgrading to 8.0.0, add the bridge user script to the application-owned configuration before creating the web view, then create the bridge before loading content. Retain the bridge for as long as it is needed.
+-- Version 8.0.0 changes the native handler signature to take only `WVJBMessageContext *context`. Read `context.data` and call `context.responseCallback` when non-nil. This is a breaking native API change; the JavaScript message format is unchanged. Subframe requests are rejected by default.
+-- Use `userScriptForMainFrameOnly:YES` for main-frame-only injection.
 
 Who uses WebViewJavascriptBridge?
 ---------------------------------
@@ -66,7 +68,7 @@ Create the bridge and register handlers before loading any content:
 
 ```objc
 WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
-[configuration.userContentController addUserScript:[WebViewJavascriptBridge userScript]];
+[configuration.userContentController addUserScript:[WebViewJavascriptBridge userScriptForMainFrameOnly:YES]];
 WKWebView *webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
 self.bridge = [WebViewJavascriptBridge bridgeForWebView:webView];
 webView.navigationDelegate = self;
@@ -74,11 +76,17 @@ webView.navigationDelegate = self;
 
 Keep a strong reference to the bridge. Install the script before creating the web view and create the bridge before the first page load. The script runs at document start. The application owns the configuration and manages `webView.navigationDelegate` directly. Each user content controller supports one active bridge and must not already use the `WebViewJavascriptBridge` message handler name. The application must prevent these conflicts; WebKit may raise an exception if the name is already registered, and the bridge does not catch it. Bridge creation returns nil and logs an error if the web view is nil or the matching script is missing.
 
-`userScript` defaults to main-frame-only injection. Use `userScriptForMainFrameOnly:NO` to inject the script into child frames as well. This does not provide reliable frame-specific communication: native replies are evaluated in the main frame, not directed to the originating child frame. Only main-frame ready signals update the native bridge state; ordinary child-frame messages are still handled. The registered WebKit message handler can also be accessed by child frames even without injecting the bridge script there. Do not load untrusted frame content without appropriate application-level validation and restrictions on native handlers.
+Use `userScriptForMainFrameOnly:YES` to inject only into the main frame. The WebKit message handler can still be accessed from child frames without that script. By default, ordinary main-frame requests are accepted and child-frame requests rejected. Set `authorizationHandler` before loading content to authorize each ordinary request from either frame. When set, it must explicitly allow main-frame requests too. Rejected requests are logged and receive no response. Validate the WebKit-provided `context.frameInfo.securityOrigin`, handler name and untrusted data against application-specific permissions. Main-frame acceptance is not proof of trust; same-origin child frames may also call through their parent.
+
+Use `userScriptForMainFrameOnly:NO` if authorized child frames need the bridge script. Replies to JavaScript requests are evaluated in their originating frame; subframe responses to native-initiated calls are rejected. Only main-frame ready signals change bridge state. Frame information does not establish document identity across navigation; a frame reply can fail or reach a later document. Do not rely on in-flight calls across navigations.
 
 The first main-frame ready signal releases native calls queued during startup, but it does not guarantee that the page has registered its application handlers. Coordinate native calls with an application-level signal sent after those handlers are registered.
 
 The compatibility target is for existing main-frame H5 pages using the documented bridge setup and JavaScript API to work without changing their page code. This is a compatibility goal, not a guarantee for every legacy page.
+
+### Logging
+
+Errors and rejected requests are logged by default without message payloads. Call `[WebViewJavascriptBridge enableLogging]` to additionally log sent and received messages. These debug logs can contain sensitive application data, handler names and callback identifiers. `[WebViewJavascriptBridge setLogMaxLength:500]` limits the length of each debug message (500 UTF-16 code units by default); truncation is not redaction. Enable debug logging only where disclosure is acceptable.
 
 `setWebViewDelegate:` is no longer available; set `webView.navigationDelegate` directly. During navigation or reload, calls and responses can be lost or reach the wrong document. Each subsequent main-frame ready signal clears all native pending response callbacks without invoking them or reporting an error. Avoid relying on in-flight calls across reloads and coordinate application work with application-level readiness.
 
@@ -104,9 +112,9 @@ Usage
 3) Register a handler in ObjC, and call a JS handler:
 
 ```objc
-[self.bridge registerHandler:@"ObjC Echo" handler:^(id data, WVJBResponseCallback responseCallback) {
-	NSLog(@"ObjC Echo called with: %@", data);
-	responseCallback(data);
+[self.bridge registerHandler:@"ObjC Echo" handler:^(WVJBMessageContext *context) {
+	NSLog(@"ObjC Echo called with: %@", context.data);
+	if (context.responseCallback) context.responseCallback(context.data);
 }];
 [self.bridge callHandler:@"JS Echo" data:nil responseCallback:^(id responseData) {
 	NSLog(@"ObjC received response: %@", responseData);
@@ -169,19 +177,19 @@ API Reference
 
 ### ObjC API
 
-##### `[WebViewJavascriptBridge userScript]`
+##### `[WebViewJavascriptBridge userScriptForMainFrameOnly:(BOOL)mainFrameOnly]`
 
 Obtain the bridge user script and add it to the application's configuration before creating the web view.
 
 Example:
 
 ```objc	
-[configuration.userContentController addUserScript:[WebViewJavascriptBridge userScript]];
+[configuration.userContentController addUserScript:[WebViewJavascriptBridge userScriptForMainFrameOnly:YES]];
 ```
 
 ##### `[WebViewJavascriptBridge bridgeForWebView:(WKWebView *)webView]`
 
-Create and retain a bridge for the web view before loading any content, after adding `[WebViewJavascriptBridge userScript]` to the configuration and creating the web view. Bridge creation returns nil if the web view or matching script is missing.
+Create and retain a bridge for the web view before loading any content, after adding the script with the desired frame scope to the configuration and creating the web view. Bridge creation returns nil if the web view or matching script is missing.
 
 ##### `[bridge registerHandler:(NSString*)handlerName handler:(WVJBHandler)handler]`
 
@@ -190,11 +198,11 @@ Register a handler called `handlerName`. The javascript can then call this handl
 Example:
 
 ```objc
-[self.bridge registerHandler:@"getScreenHeight" handler:^(id data, WVJBResponseCallback responseCallback) {
-	responseCallback([NSNumber numberWithInt:[UIScreen mainScreen].bounds.size.height]);
+[self.bridge registerHandler:@"getScreenHeight" handler:^(WVJBMessageContext *context) {
+	if (context.responseCallback) context.responseCallback([NSNumber numberWithInt:[UIScreen mainScreen].bounds.size.height]);
 }];
-[self.bridge registerHandler:@"log" handler:^(id data, WVJBResponseCallback responseCallback) {
-	NSLog(@"Log: %@", data);
+[self.bridge registerHandler:@"log" handler:^(WVJBMessageContext *context) {
+	NSLog(@"Log: %@", context.data);
 }];
 
 ```

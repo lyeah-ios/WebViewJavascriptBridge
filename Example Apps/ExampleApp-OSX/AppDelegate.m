@@ -22,16 +22,16 @@
 
 - (void)_configureWKWebview {
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
-    [configuration.userContentController addUserScript:[WebViewJavascriptBridge userScript]];
+    [configuration.userContentController addUserScript:[WebViewJavascriptBridge userScriptForMainFrameOnly:YES]];
     _WKWebView = [[WKWebView alloc] initWithFrame:self.WKWebViewWrapper.bounds configuration:configuration];
     _WKBridge = [WebViewJavascriptBridge bridgeForWebView:_WKWebView];
     _WKWebView.navigationDelegate = self;
     [_WKWebView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable)];
     [self.WKWebViewWrapper addSubview:_WKWebView];
 
-    [_WKBridge registerHandler:@"testObjcCallback" handler:^(id data, WVJBResponseCallback responseCallback) {
-        NSLog(@"testObjcCallback called: %@", data);
-        responseCallback(@"Response from testObjcCallback");
+    [_WKBridge registerHandler:@"testObjcCallback" handler:^(WVJBMessageContext *context) {
+        NSLog(@"testObjcCallback called: %@", context.data);
+        if (context.responseCallback) context.responseCallback(@"Response from testObjcCallback");
     }];
     
     [_WKBridge callHandler:@"testJavascriptHandler" data:@{ @"foo":@"before ready" }];
